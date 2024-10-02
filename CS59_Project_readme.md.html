@@ -1,0 +1,743 @@
+**CS59 Project Writeup**
+
+Updated for each project deadline.
+
+
+Author
+=============
+
+<!-- Note: wrapping table in div.noheader will hide the table's header -->
+<!-- Note: wrapping table in div.firstcol will style the first column different from other columns -->
+<div class="noheader firstcol">
+                  |             
+------------------|-------------
+group             | Liam Murray and Jada Jones
+</div>
+
+
+
+P00 Project Selection and Approval
+=================
+
+Define the domain.
+----------------------------------
+The domain for our language is education, specifically lower-school teaching. 
+
+Define the problem. What is the purpose of the language?
+----------------------------------
+Teachers in lower school may not have time to effectively generate exams/quizzes for their students. Additionally, quizzes are often homogenous across a classroom, and can lead to cheating. The purpose of our language is to provide an easy, intuitive solution for these teachers. Our language will allow the creation of quizzes for arithmetic problems. The generator will feature a question bank which the generator will randomly pull from to generate multiple choice questions. Additionally, the numbers present in the problems will be randomly generated based on a range given in the input, to ensure students can’t look at other tests.  
+
+Example solutions and outputs.
+----------------------------------
+In this process the teacher would write in expressions such as ax + b = y. Our DSL would randomly generate values for the constants a and b. As well as a randomly generated y value for the solution. Example Problem: ax + b = c, What is the value of x? An expected output would be: 6x + 11 = 47. Randomly generated answers for the problem would be a. 4, b. 9, c. 6, d. 2, with 6 being the correct answer.  The quiz taker would then solve for the value of x. 
+
+Defining functionality.
+----------------------------------
+Generally speaking, and subject to change, a teacher provides a list of questions in the correct format that would fall into the question bank. The teacher would also provide a question count and constant range, which would be used to create different numbers in the question. For any given question, 4 potential answers are given. Three of the multiple choice answers are randomly generated ints, while the last is determined based on the question itself and the randomly generated constants, or in other words, the actual answer. All of these questions are compiled together in an html-like file in a readable format.  
+
+Approval?
+----------------------------------
+Approved over slack.
+
+
+
+
+P01 Project Grammar
+=================
+
+The grammar:
+----------------------------------
+
+The following code the grammar we developed in ANTLR/Java.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+grammar Grammar;
+
+quiz : bank;
+
+// bank consists of 1 or more questions
+bank : count range 'Bank:' ('['question']')+;
+
+// length of quiz
+count : 'Count: ' NUMBER;
+
+range : 'Range: ' '('NUMBER ' to ' NUMBER')';
+
+question : 'Solve for the unknown variable: ' equation;
+
+// ensures we have an equals sign
+// could extend later to consider systems of equations
+equation : expr '=' expr;
+
+// term followed by one or more terms
+expr : term (OPERATOR term)*;
+
+// allows for things a negative term, for instance -2x = 6
+term : (OPERATOR)? factor;
+
+// allows for options like x, 5x, 5 or another expression with parens
+factor : NUMBER VARIABLE
+       | VARIABLE
+       | NUMBER
+       | '(' expr ')'
+       ;
+
+OPERATOR : '+'
+         | '-'
+         | '/'
+         | '*'
+         ;
+
+VARIABLE : [a-zA-Z]+ ;
+NUMBER : [0-9]+;
+
+WS : [ \t\r\n]+ -> skip ;  // tells ANTLR to ignore these
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example (accepted) input based on this grammar is the following: 
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Count: 10
+Range: (1 to 100)
+Bank:
+[Solve for the unknown variable: -2x = nx - n]
+[Solve for the unknown variable: -(2x*4) + n * (nx-8) / (n) = 6]
+[Solve for the unknown variable: 3x + n = 11]
+[Solve for the unknown variable: 5x - 7 = nx + 9]
+[Solve for the unknown variable: 4x / n = x + 3]
+[Solve for the unknown variable: 6x + 2x - 3 = nx + 5]
+[Solve for the unknown variable: 8x - 3x + n = 2x - 9]
+[Solve for the unknown variable: x/n - 2 = x/2 + 1]
+[Solve for the unknown variable: x - 4x = n]
+[Solve for the unknown variable: 7x/n + x/3 = 5]
+[Solve for the unknown variable: 5x - n = -2x + 10]
+[Solve for the unknown variable: -3x + n = x - 5]
+[Solve for the unknown variable: 9x + n = 2x + 18]
+[Solve for the unknown variable: 12x - nx + 6 = 3x + 9]
+[Solve for the unknown variable: 2x + n = 7 - x]
+[Solve for the unknown variable: 4x/n + x/2 = 6]
+[Solve for the unknown variable: 3x - n = 2x + 7]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When we work on the parser/semantics, the 'n' variables in each input will be randomized in the output. Additionally, the when working on the semantics, the output will include answer options, one of which will be the correct answer to the expression. The range denoted will be used to specify the range for the randomized 'n' variables. The question bank will be randomly pulled from to create the quiz, and would likely be much larger than the example provided above depending on the length of a quiz. Count specifies the intended length of the quiz.
+
+Did we have to make changes?
+-------------------------------
+
+The short answer is yes. Initially we thought it would be easiest to also provide a bank of potential answers for each question. Not only will that be easier to handle in semantics/translation to desired output, but it would be incredibly time consuming to denote a list of possible answers that may or may not be relevant depending on the question. It would have led to the input being more complex than necessary. Other than that, it mostly went according to plan. There might be more work than we originally thought in the next weeks for the semantics, but for the input, we were able to streamline it as much as possible. 
+
+
+
+
+P02 Functional Parser
+=================
+
+Updated Grammar
+-----------------
+
+Based on feedback about errors and suggestions for the grammar in the previous checkpoint, we have made some changes to our grammar. Notably, each question now has a specific range, variables and constants are separate things, and now only contain 1 character. Additionally, clunky and laborious syntax required in the input (brackets and "Solve for the unknown variable" statement) have been removed, streamlining the input. 
+
+
+The following is the updated grammar:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+grammar Grammar;
+
+quiz : bank;
+
+// bank consists of 1 or more questions
+bank : count 'Bank:' (question)+;
+
+// length of quiz
+count : 'Count: ' NUMBER;
+
+range : '('NUMBER ' to ' NUMBER')';
+
+question : range equation;
+
+// ensures we have an equals sign
+// could extend later to consider systems of equations
+equation : expr '=' expr;
+
+// term followed by one or more terms
+expr : term (OPERATOR term)*;
+
+// allows for things a negative term, for instance -2x = 6
+term : (OPERATOR)? factor;
+
+// allows for options like x, Ax, B or another expression with parens
+factor : CONSTANT VARIABLE
+       | VARIABLE
+       | CONSTANT
+       | '(' expr ')'
+       ;
+
+OPERATOR : '+'
+         | '-'
+         | '/'
+         | '*'
+         ;
+
+// variable is just a single lower case letter
+VARIABLE : [a-z] ;
+// number is any digit
+NUMBER : [0-9]+ ;
+// constant is any single capital letter
+CONSTANT : [A-Z] ;
+
+WS : [ \t\r\n]+ -> skip ;  // tells ANTLR to ignore these
+
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following is a correct input with the new syntax in effect:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+Count: 10
+Bank:
+(1 to 100) -Ax = Bx - C
+(1 to 100) -(Dx * E) + F * (Gx - H) / (I) = J
+(1 to 100) Kx + L = M
+(1 to 100) Nx - O = Px + Q
+(1 to 100) Rx / S = x + T
+(1 to 100) Ux + Vx - W = Xx + Y
+(1 to 100) Zx - Ax + B = Cx - D
+(1 to 100) x / E - F = x / G + H
+(1 to 100) x - Ix = J
+(1 to 100) Kx / L + x / M = N
+(1 to 100) Ox - P = -Qx + R
+(1 to 100) -Sx + T = x - U
+(1 to 100) Vx + W = Xx + Y
+(1 to 100) Zx - Ax + B = Cx + D
+(1 to 100) Ex + F = G - x
+(1 to 100) Hx / I + x / J = K
+(1 to 100) Lx - M = Nx + O
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following are incorrect inputs. Errors are specificly seen in the question format:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Count: 10
+Bank:
+(1 to 100) -Ax = Bx - C-
+(1 to 100) -(Dx * E) + F * (Gx - H) / = J
+(1 to 100) Kx + L = M/
+(1 to 100) Nx - O = Px + Q/
+(1 to 100) Rx / S = x + T/
+(1 to 100) Ux + Vx - W = Xx + Y-
+(1 to 100) Zx - Ax + B = Cx - D/
+(1 to 100) x / E - F = x / G + H-
+(1 to 100) x - I = J/
+(1 to 100) Kx / L + x / M = N-
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Distinguishing between correct and incorrect inputs:
+--------------------------------------------------------------------------
+
+The following image shows the ANTLR parser accepting our correct inputs and rejecting incorrect inputs. This was implemented with the error handler and similar code to previous projects. An input file with both correct and incorrect inputs was passed to the parser to test for correctness.
+
+
+![Picture showing parser accepting and rejecting inputs.](test.png)
+
+
+
+
+P03 Translation and Output
+===========================
+
+In this stage of the project, we went took a desired and accept input and transformed it into a quiz format that we desginated with Markdeep formatting. Before discussing the listener, small quality of life changes were made to the grammar that allow for easier data access and more clarity in question bank building. Now, the only variable that is accepted is the letter 'x'. 
+
+The updated grammar is as follows:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+grammar Grammar;
+
+quiz : bank;
+
+// bank consists of 1 or more questions
+bank : count 'Bank:' (question)+;
+
+// length of quiz
+count : 'Count: ' NUMBER;
+
+range : '('lowerbound ' to ' upperbound')';
+
+lowerbound : NUMBER ;
+
+upperbound : NUMBER ;
+
+question : range equation;
+
+// ensures we have an equals sign
+// could extend later to consider systems of equations
+equation : expr '=' expr;
+
+// term followed by one or more terms
+expr : term (OPERATOR term)*;
+
+// allows for things like a negative term, for instance -2x = 6
+term : (OPERATOR)? factor;
+
+// allows for options like x, Ax, B or another expression with parens
+factor : CONSTANT VARIABLE
+       | VARIABLE
+       | CONSTANT
+       | '(' expr ')'
+       ;
+
+OPERATOR : '+'
+         | '-'
+         | '/'
+         | '*'
+         ;
+
+// variable is just a single lower case letter
+VARIABLE : [x] ;
+// number is any digit
+NUMBER : [0-9]+ ;
+// constant is any single capital letter
+CONSTANT : [A-Z] ;
+
+WS : [ \t\r\n]+ -> skip ;  // tells ANTLR to ignore these
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now onto the listener. Our implementation assumes a standard, four answer multiple choice format for the quiz. As of now, the grammar and translation is only able to handle input from linear equations. Any given question will have 4 possible answers, listed A through D, and one of them will randomly be assigned the actual answer for the equation. Questions from the input bank are selected at random, and the question count of the quiz is based on the "Count: #" input. Every question is evaluated to determine its correct answer, storing the results in an answer bank that is printed at the bottom of every output, after the markdeep formatting footer. In order to solve the equations to determine the correct answer for a given question, the Symja Android Math Library was used. In particular, the Roots() function was used to solve for the x values in each equation. In the future, if different types of questions were desired in the quiz, Symja could also be used to solve for a system of equations, as well as more complex polynomials. The link to the Symja github page is [in this hyperlink](https://github.com/axkr/symja_android_library). See the solveEquation() function in our implementation to see how it was used. Every capital letter in a given question from the bank has a random number assigned to it from within the range designated for the question. The range allows the user to decide the size of the numbers in the question, as working with smaller numbers can sometimes be easier. For example, if the given range of a question is (3 to 50), the only numbers that could replace the capital letter constants in an equation such as -Ax = Bx - C are between 3 and 50, inclusive. An example of the variable assignment being completed for this example may look like this: -8x = 12x - 37. The solveEquation() function would then solve this equation for x, note the answer, and randomly include it as one of the 4 potential answers to the question, as well as keep track of it for the answer bank. The final part of the listener that is randomized is the other potential answer choices for each questions. As it stands right now, the potential answers are chosen based on a range twice as big as the range for the specified question, but ultimately shifted in the negative direction by the "range". If the given range is (1 to 100), the possible answer choices that could show up for that question can range from -100 to 100, inclusive. This allows for negative answers to be a possibility, and provides an estimate of where the actual answer may fall. Ultimately, the translation to Markdeep formatting wasn't too difficult. Mainly, the translation dealt with the creation of lists for each question, in line Latex translations for the math equations, and spitting out the answer key at the end. 
+
+One important feature of the listener is in the handling of a "no solutions case". It may be the case that due to randomization an equation might have no solutions. There is functionality to handle this in the answer options, so we will allow it. However, the roots function from Symja would return an error to the output, and in order to not have to go back and delete the error message, the solveEquation() function is equipped with the ability to suppress error messages. I just looked up a way to create a new error print stream in java, and found a simple solution. It's a try, finally block, where we first make the error message print nothing (essentially ignoring it), and then returning to normal error handling after each call to solveEquation() to handle any other errors. Basically, any time we call solveEquation(), it ignores and doesn't print math related error for no solutions so we can have interesting cases where "no solutions" may be an answer. 
+
+
+The code for our extended listener looks like this:
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/**
+ * CS59
+ * Dr. Jon Denning
+ * 8/9/24
+ * @author Liam Murray / Jada Jones
+ * extended listener for handling translation to html-like quiz format
+ */
+
+
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.util.*;
+import org.matheclipse.core.eval.ExprEvaluator;
+import org.matheclipse.core.interfaces.IExpr;
+
+import static java.lang.Double.NaN;
+
+
+public class ExtendedListener extends GrammarBaseListener {
+    int count;
+    Map<String, Integer> questions = new HashMap<>();
+
+    @Override
+    public void exitCount(GrammarParser.CountContext ctx) {
+        count = Integer.parseInt(ctx.NUMBER().getText());
+    }
+
+    public int getCount() {
+        return count;
+    }
+
+    @Override
+    public void enterQuiz(GrammarParser.QuizContext ctx) {
+        System.out.println("**Name**:_______________________________________________ **Period**:_______ **Date**:_________");
+        System.out.println("        **Simple Arithmetic Quiz**         ");
+        System.out.println("============================================");
+        System.out.println();
+    }
+
+    // equation/root solver implemented with the help of the symja android library on github
+    // link is here: https://github.com/axkr/symja_android_library
+    public Double solveEquation(String equation) {
+        double formattedAnswer;
+
+        // redirect standard error stream to suppress error messages
+        // we do this because an equation may have no solutions
+        // we have functionality to handle if there is no solutions, which is allowed, but
+        // if we don't suppress the error message for no solutions in the call to
+        // roots(), then the error message will mess with the Markdeep formatting in the output
+
+        PrintStream originalErr = System.err;
+        // create new error print stream
+        System.setErr(new PrintStream(new OutputStream() {
+            public void write(int b) {
+                // if error, change the write to do nothing, essentially suppressing the error output
+            }
+        }));
+
+        try {
+            // instantiate the expression evaluator from symja
+            ExprEvaluator util = new ExprEvaluator();
+
+            // parse to add two equals signs so Symja can recognize
+            equation = equation.replaceAll("=", "==");
+
+            // solve for x by calling roots function
+            String symjaExpression = "Roots(" + equation + ", x)";
+            IExpr result = util.evaluate(symjaExpression);
+
+            // parse to double
+            String[] array = result.toString().split("==");
+            // if there is a solution, continue parsing, otherwise, there wont be anything in array[1],
+            // meaning no answer, thus no solution, return NaN
+            if (array.length > 1) {
+                String unformattedAnswer = array[1];
+                String[] fraction = unformattedAnswer.split("/");
+
+                // if number is a fraction, convert to double, otherwise leave it the same
+                if (fraction.length > 1) {
+                    formattedAnswer = Double.parseDouble(fraction[0]) / Double.parseDouble(fraction[1]);
+                } else {
+                    formattedAnswer = Double.parseDouble(unformattedAnswer);
+                }
+                String StringFormattedAnswer = String.format("%.1f", formattedAnswer);
+                formattedAnswer = Double.parseDouble(StringFormattedAnswer);
+            } else {
+                return Double.NaN;
+            }
+        } finally {
+            // restore the original error stream
+            System.setErr(originalErr);
+        }
+
+        return formattedAnswer;
+    }
+
+
+    @Override
+    public void exitQuestion(GrammarParser.QuestionContext ctx) {
+        // get bounds for the range
+        int lower_bound = Integer.parseInt(ctx.range().lowerbound().NUMBER().getText());
+        int upper_bound = Integer.parseInt(ctx.range().upperbound().NUMBER().getText());
+
+        // every time we leave question, add to the questions list
+        questions.put(ctx.equation().getText(), upper_bound - lower_bound + 1);
+    }
+
+    @Override
+    public void exitQuiz(GrammarParser.QuizContext ctx) {
+        // fill an answer key as we go
+        Map<Integer, Double> answerKey = new HashMap<>();
+
+        // get all the questions, then randomize them, so we can choose them randomly
+        ArrayList<String> keys = new ArrayList<>(questions.keySet());
+        Collections.shuffle(keys);
+
+        if (keys.size() < count) {
+            System.out.println("Number of questions in the question bank is smaller than designated quiz length. Please add more questions to the bank or reduce the question count of your quiz.");
+            return;
+        }
+
+        // generates random numbers
+        Random random = new Random();
+
+        // repeat for as many questions that were requested to be generated...
+        for (int q = 0; q < count; q++) {
+            // get the equation
+            String equation_provided = keys.get(q);
+
+            // replace each uppercase letter with a random number
+            Map<Character, Integer> replacementMap = new HashMap<>();
+            StringBuilder new_equation = new StringBuilder();
+
+            for (char c : equation_provided.toCharArray()) {
+                // check for uppercase characters
+                if (Character.isUpperCase(c)) {
+                    // if is uppercase, add to replacement map with a random number based on this
+                    // question's range, add one to avoid division by 0
+                    replacementMap.putIfAbsent(c, random.nextInt(questions.get(equation_provided)) + 1);
+                    // append the corresponding random number to the new equation
+                    new_equation.append(replacementMap.get(c));
+                }
+                else {
+                    // if it's not a capital letter, just add it back to the equation
+                    new_equation.append(c);
+                }
+            }
+
+            // get answer to the given equation
+            double computed_answer = solveEquation(String.valueOf(new_equation));
+
+            // generate possible answers, one of them must include the actual answer
+            ArrayList<Double> answers = new ArrayList<>();
+            answers.add(computed_answer);
+            for (int i = 1; i < 4; i++) {
+                // allow decimals, but trim to 1 decimal point
+                double result = (random.nextDouble() * questions.get(equation_provided) * 2) - questions.get(equation_provided);
+                String formattedResult = String.format("%.1f", result);
+                answers.add(Double.parseDouble(formattedResult));
+            }
+
+            // generate randomized indices, ensures no repeating indices or overwriting
+            ArrayList<Integer> indices = new ArrayList<>();
+            for (int j = 0; j < answers.size(); j++) {
+                indices.add(j);
+            }
+            Collections.shuffle(indices);
+
+            // print out the actual question
+            // use '$' for in-line latex math via Markdeep formatting
+            System.out.println((q + 1) + ". Solve " + "$" + new_equation + "$" + " for the value of x.\n");
+
+            // handle case where if it's NaN, print no solution
+            for (int i = 0; i < answers.size(); i++) {
+                // updates the character A to be B, then C, etc
+                String option = "  " + (char)('A' + i) + ". ";
+                if (Double.isNaN(answers.get(indices.get(i)))) {
+                    option += "No solution";
+                } else {
+                    option += answers.get(indices.get(i));
+                }
+                System.out.println(option + "\n");
+                // add to answer key
+                answerKey.put((q+1), computed_answer);
+            }
+        }
+
+        System.out.println();
+        // append the Markdeep templating script
+        System.out.println("<script src=\"https://casual-effects.com/markdeep/latest/markdeep.min.js\"></script><!-- Markdeep: --><style class=\"fallback\">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src=\"markdeep.min.js\"></script><script src=\"https://casual-effects.com/markdeep/latest/markdeep.min.js?\"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility=\"visible\")</script>");
+        System.out.println();
+
+        // PRINT ANSWER KEY
+        System.out.println("Answer key: ");
+        LinkedList<Integer> answers = new LinkedList<>(answerKey.keySet());
+        for (int index = 0; index < answers.size(); index++) {
+            if (Double.isNaN(answerKey.get(index + 1))) {
+                String answer_value = "No solution.";
+                System.out.println("The answer to question " + (index + 1) + " is " + answer_value);
+            }
+            else {
+                System.out.println("The answer to question " + (index + 1) + " is " + answerKey.get(index + 1) + ".");
+            }
+        }
+    }
+}
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Here are some pictures showing features of the output in Java, before the Markdeep formatting is applied:
+
+![Picture showing the format of the header, in-line Latex, and example questions.](outputheading.png)
+
+![Picture showing the printed answer key, as well as the Markdeep formatting footer.](outputanskey.png)
+
+
+In order to get the quiz to look nice in Markdeep formatting, copy and paste all of the text from the output, except the answer key, to a text editor of you choice, save it to your computer, and open it. It should open a nicely formatted html-like file in your browser. From the brower, you can print the page as is and you have a nicely formatted, fully automated/randomized quiz.
+
+Here is an image of the nicely formatted quiz in the browser:
+
+![Picture showing Markdeep output in browser.](mdoutput.png)
+
+
+
+P04 Documentation
+=================
+Updated Grammar
+----------------------------------
+We made a quick change to the grammar of the DSL to be able to handle implicit multiplication on 
+parentheses. Now instead of having to write an asterick inbetween a number or constant and parenthese, like 
+this: A * (x-2)  it can be written as A(x-2) and still be evaluated. We changed the factor non termina
+to accept parentheses around an expression. 
+
+~~~~
+grammar Grammar;
+
+quiz : bank;
+
+// bank consists of 1 or more questions
+bank : count 'Bank:' (question)+;
+
+// length of quiz
+count : 'Count: ' NUMBER;
+
+range : '('lowerbound ' to ' upperbound')';
+
+lowerbound : NUMBER ;
+
+upperbound : NUMBER ;
+
+question : range equation;
+
+// ensures we have an equals sign
+// could extend later to consider systems of equations
+equation : expr '=' expr;
+
+// term followed by one or more terms
+expr : term (OPERATOR term)*;
+
+// allows for things like a negative term, for instance -2x = 6
+term : (OPERATOR)? factor;
+
+// allows for options like x, Ax, B or another expression with parens
+factor : CONSTANT VARIABLE
+       | VARIABLE
+       | CONSTANT
+       | '(' expr ')'
+       | CONSTANT '(' expr ')'
+       ;
+
+OPERATOR : '+'
+         | '-'
+         | '/'
+         | '*'
+         ;
+
+// variable is just a single lower case letter
+VARIABLE : [x] ;
+// number is any digit
+NUMBER : [0-9]+ ;
+// constant is any single capital letter
+CONSTANT : [A-Z] ;
+
+WS : [ \t\r\n]+ -> skip ;  // tells ANTLR to ignore these
+~~~~
+
+
+
+DSL Comparison
+----------------------------------
+Our quiz generator DSL allows teachers and educators to simplify the quiz creation process, enabling them to 
+focus on other important tasks. Unlike creating quizzes by hand or using a general-purpose programming language, our DSL 
+streamlines the entire process, allowing for intuitive and straightforward input. With just a few basic commands, educators can 
+define complex quizzes with randomized elements, ensuring each student receives a unique set of questions. The DSL automatically handles 
+the structure, consistency, and randomization, eliminating the need for manual adjustments and reducing the likelihood of errors. We also 
+enable the educator to select the difficulty of the quiz. With the ability to select a range of numbers that will be the range for 
+the randomized numbers, our DSL can be used for all age groups. 
+
+
+Example 
+----------------------------------
+Input: 
+~~~~
+Count: 10
+Bank: 
+(1 to 50) Ax + B = Cx + D
+(1 to 80) (A - Bx) = Cx + D
+(1 to 100) Ax + B = Cx - D
+(1 to 60) A(x + B) = Cx + D
+(1 to 90) (Ax - B) = Cx + D
+(1 to 70) A(x + B) = Cx - D
+(1 to 100) Ax - B = Cx + D
+(1 to 55) A(x - B) = Cx + D
+(1 to 90) (A - Bx) = Cx - D
+(1 to 80) Ax + B = Cx - D
+(1 to 100) (A - B) * x = Cx + D
+(1 to 65) A(x - B) = Cx + D
+(1 to 85) Ax + B = C(x + D)
+(1 to 75) (A - Bx) = Cx + D
+(1 to 100) Ax + B = Cx - D
+~~~~
+
+With this input an educator is able to easily modify the range, and the format of the question. One 
+can easily copy and paste a single input and modify it multiple times in a text file. If this were done 
+by hand, it would take longer and be more prone to error. 
+
+Output: 
+
+
+![Picture showing the Java output.](outputpic.png)
+
+This is what the output looks like when put into a MarkDeep format. Educators can easily print out this page, and disperse to students. 
+
+![Picture showing Markdeep output in browser.](browseoutput.png)
+
+
+Along with this to test that the DSL was wokring correctly, and outputting the correct answers, we answered by hand 
+question 3 from the output. 
+This was the question for question three, along with the answer choices: 
+
+Solve 2x + 1 = 21x + 50 for the value of x.
+
+A. 42.9
+
+B. 30.5
+
+C. -33.9
+
+D. -2.6
+
+![Picture showing handwritten answer.](written.jpeg)
+
+This falls in line with the Answer Key that is added at the end of the Java Output: 
+
+__The answer to question 3 is -2.6.__
+~~~~
+Answer key: 
+The answer to question 1 is -21.4.
+The answer to question 2 is 15.3.
+The answer to question 3 is -2.6.
+The answer to question 4 is -0.6.
+The answer to question 5 is 0.3.
+The answer to question 6 is -13.3.
+The answer to question 7 is -1.5.
+The answer to question 8 is 2.5.
+The answer to question 9 is -13.7.
+The answer to question 10 is -12.9.
+~~~~
+
+
+
+
+
+
+
+<!--   Feel free to modify the following to fit a theme of your choosing   -->
+<link href="https://fonts.googleapis.com/css?family=Open+Sans&display=swap" rel="stylesheet"> <!-- a sans-serif font -->
+<style>  /* A TAYLOR-INSPIRED THEME */
+    body {font-family:'Open Sans',sans-serif;}
+    .md a:link, .md a:visited {color:hsl(252,23.0%,44.3%); font-family:'Open Sans',sans-serif;}
+    .md table.table th {background-color:hsl(252,23.0%,44.3%);}
+    .md .noheader th {display:none;}
+    .md .firstcol td:first-child {white-space:pre;color:white;vertical-align:top;font-weight:bold;border-color:black;background:hsl(252,23.0%,54.3%);}
+    .md .firstcol tr:nth-child(even) td:first-child {background:hsl(252,23.0%,44.3%);}
+</style>
+
+
+<!-- ****************************** -->
+<!--    Leave the content below     -->
+<!-- ****************************** -->
+
+<!-- The script and style below are added for clarity and to workaround a bug -->
+<script>
+    // this is a hack to workaround a bug in Markdeep+Mathjax, where
+    // `$`` is automatically converted to `\(`` and `\)`` too soon.
+    // the following code will replace the innerHTML of all elements
+    // with class "dollar" with a dollar sign.
+    setTimeout(function() {
+        var dollars = document.getElementsByClassName('dollar');
+        for(var i = 0; i < dollars.length; i++) {
+            dollars[i].innerHTML = '&#' + '36;'; // split to prevent conversion to $
+        }
+    }, 1000);
+</script>
+<style>
+    /* adding some styling to <code> tags (but not <pre><code> coding blocks!) */
+    :not(pre) > code {
+        background-color: rgba(0,0,0,0.05);
+        outline: 1px solid rgba(0,0,0,0.15);
+        margin-left: 0.25em;
+        margin-right: 0.25em;
+    }
+    /* fixes table of contents of medium-length document from looking weird if admonitions are behind */
+    .md div.mediumTOC { background: white; }
+    .md div.admonition { position: initial !important; }
+</style>
+
+<!--   Leave the following Markdeep formatting code, as this will format your text above to look nice in a wed browser   -->
+
+<script src="https://casual-effects.com/markdeep/latest/markdeep.min.js"></script><!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script src="https://casual-effects.com/markdeep/latest/markdeep.min.js?"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
